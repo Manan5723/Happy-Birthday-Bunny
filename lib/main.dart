@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:animated_splash_screen/animated_splash_screen.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -12,11 +14,34 @@ import 'package:connectivity/connectivity.dart';
 import 'package:thingsworld/new.dart';
 import 'package:velocity_x/velocity_x.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 bool initstatus = false;
 // ignore: non_constant_identifier_names
 bool BackgroundState = false;
-final clientactive = ClientActivation();
+
+final Mtopic = TopicNotifier();
+String topic = Mtopic.value;
+
+class TopicNotifier extends ValueNotifier<String> {
+  TopicNotifier() : super('Test');
+
+  void changeTopic(String arg) {
+    value = arg;
+    print(topic);
+  }
+}
+
+//store locally
+Future<void> savetopic() async {
+  final prefs = await SharedPreferences.getInstance();
+  prefs.setString('topic', topic);
+}
+
+Future<String?> gettopic() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('topic');
+}
 
 List<Map<String, String>> resultArray = [];
 final stateContainer = ProviderContainer();
@@ -59,29 +84,23 @@ Future<void> initializeService() async {
 
   await service.configure(
     androidConfiguration: AndroidConfiguration(
-      // this will be executed when app is in foreground or background in separated isolate
-      onStart: onStart,
-      autoStartOnBoot: true,
-      autoStart: true,
-      isForegroundMode: true,
-      notificationChannelId:
-          notificationChannelId, // this must match with notification channel you created above.
-      initialNotificationTitle: 'GSM M2M',
-      initialNotificationContent: 'Welcome',
-      foregroundServiceNotificationId: notificationId,
-    ),
+        // this will be executed when app is in foreground or background in separated isolate
+        onStart: onStart,
+        autoStartOnBoot: true,
+        autoStart: true,
+        isForegroundMode: true,
+        notificationChannelId:
+            notificationChannelId, // this must match with notification channel you created above.
+        initialNotificationTitle: 'GSM M2M',
+        initialNotificationContent: 'Welcome',
+        foregroundServiceNotificationId: notificationId),
     iosConfiguration: IosConfiguration(),
   );
 }
 
-void ClientIDActivate(String ClientID) {
-  pubTopic = '${ClientID}S';
-  topic = '${ClientID}P';
-}
-
 @pragma('vm:entry-point')
 onStart(ServiceInstance service) async {
-  _bgmq();
+  gettopic().then((value) => Mqttcon().bgmq(value!));
 }
 
 Future<void> _bgmq() async {
@@ -104,20 +123,20 @@ Future<void> _bgmq() async {
   try {
     await client.connect();
   } on NoConnectionException catch (e) {
-    _showNotification('Connection Error - $e');
+    showNotification('Connection Error - $e');
     client.disconnect();
   } on SocketException catch (e) {
     // Raised by the socket layer
-    _showNotification('Socket Exception - $e');
+    showNotification('Socket Exception - $e');
     client.disconnect();
   }
 
   /// Check we are connected
   if (client.connectionStatus!.state == MqttConnectionState.connected) {
-    _showNotification('Conected....');
+    showNotification('Conected....');
   } else {
     /// Use status here rather than state if you also want the broker return code.
-    _showNotification('Connection Failed... ${client.connectionStatus}');
+    showNotification('Connection Failed... ${client.connectionStatus}');
     client.disconnect();
     exit(-1);
   }
@@ -130,7 +149,7 @@ Future<void> _bgmq() async {
             return;
           }
         }),
-        _showNotification('Disconnected from device')
+        showNotification('Disconnected from device')
       };
 
   client.subscribe(topic, MqttQos.atLeastOnce);
@@ -138,11 +157,11 @@ Future<void> _bgmq() async {
     final recMess = c![0].payload as MqttPublishMessage;
     final pt =
         MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
-    _showNotification(pt);
+    showNotification(pt);
   });
 }
 
-Future<void> _showNotification(String message) async {
+Future<void> showNotification(String message) async {
   flutterLocalNotificationsPlugin.show(
     0,
     'DEVICE ALERT',
@@ -151,7 +170,7 @@ Future<void> _showNotification(String message) async {
       android: AndroidNotificationDetails(
         '0',
         'MY FOREGROUND SERVICE',
-        icon: 'ic_bg_service_small',
+        icon: 'ic_launcher',
         ongoing: false,
         priority: Priority.high,
         styleInformation: BigTextStyleInformation(''),
@@ -201,8 +220,12 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   bool fetchingdata = false;
+  bool showActivateDialog = true;
+  bool showerrorDialog = false;
+  bool showCmd = false;
   Future<String>? permissionStatusFuture;
   final TextEditingController controller = TextEditingController();
+  final TextEditingController controller2 = TextEditingController();
   var permGranted = "granted";
   var permDenied = "denied";
   var permUnknown = "unknown";
@@ -268,6 +291,16 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     // set up the future to fetch the notification data
     permissionStatusFuture = getCheckNotificationPermStatus();
     fetchingdata = false;
+
+    gettopic().then((value) => {
+          if (value != null)
+            {
+              Mtopic.changeTopic(value),
+              conectingMqt(),
+              showActivateDialog = false
+            }
+        });
+
     super.initState();
   }
 
@@ -321,11 +354,10 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
             Connectivity().onConnectivityChanged.listen((event) {
               if (event != ConnectivityResult.none) {
                 conectingMqt();
-                _bgmq();
               }
             });
           }),
-          _showNotification('Disconnected from device'),
+          showNotification('Disconnected from device'),
         };
 
     /// Subscribe to it
@@ -366,7 +398,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         fetchingdata = true;
       });
       if (BackgroundState) {
-        _showNotification(pt);
+        showNotification(pt);
       }
       print(resultArray);
     });
@@ -414,11 +446,12 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
 
     /// Publish it
     print('EXAMPLE::Publishing our topic');
-    client.publishMessage(pubTopic, MqttQos.exactlyOnce, builder.payload!);
+    client.publishMessage('${topic}S', MqttQos.exactlyOnce, builder.payload!);
   }
 
   /// The successful connect callback
   void onConnected() {
+    client.subscribe('${topic}P', MqttQos.atLeastOnce);
     PubMEssage("*GET1#");
     print(
         'EXAMPLE::OnConnected client callback - Client connection was successful');
@@ -433,45 +466,50 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Image.asset(
-              'image/logo3.png',
-              width: 160,
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Image.asset(
+                "image/logo3.png",
+                width: 160,
+              ),
             ),
-            const Text(
-              'GSM M2M',
-              style: TextStyle(color: Color(0xFF4682B4), fontSize: 18),
-            )
+            const Padding(
+              padding: EdgeInsets.only(top: 5),
+              child: Text(
+                'GSM M2M v1.2',
+                style: TextStyle(color: Color(0xFF4682B4), fontSize: 16),
+              ),
+            ),
           ],
         ),
       ),
       drawer: Drawer(
-        child: ListView(
-          children: const <Widget>[
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Color(0xFF4682B4),
+        child: showCmd
+            ? customCmd()
+            : ListView(
+                children: <Widget>[
+                  const DrawerHeader(
+                    decoration: BoxDecoration(
+                      color: Color(0xFF4682B4),
+                    ),
+                    child: BackButton(),
+                  ),
+                  ListTile(
+                    title: Text("Command"),
+                    leading: Icon(Icons.comment),
+                    onTap: () {
+                      setState(() {
+                        showCmd = true;
+                      });
+                    },
+                  ),
+                ],
               ),
-              child: BackButton(),
-            ),
-            ListTile(
-              title: Text("Settings"),
-              leading: Icon(Icons.settings),
-            ),
-            ListTile(
-              title: Text("Command"),
-              leading: Icon(Icons.comment),
-            ),
-            ListTile(
-              title: Text("Timer"),
-              leading: Icon(Icons.lock_clock),
-            ),
-          ],
-        ),
       ),
       body: SafeArea(
-        child: (pubTopic == '')
+        child: (showActivateDialog)
             ? Center(
-                child: _buildTextComposer(),
+                child: showerrorDialog ? alertbox() : _buildTextComposer(),
               )
             : FutureBuilder(
                 future: permissionStatusFuture,
@@ -502,19 +540,48 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                           Expanded(
                             // ignore: prefer_const_constructors
                             child: fetchingdata
-                                ? DataTable(
+                                ? Table(
                                     border: TableBorder.all(
-                                        color: const Color(0xFF4682B4)),
-                                    columns: const [
-                                      DataColumn(label: Text('Device Data')),
-                                      DataColumn(label: Text('Status')),
+                                      color: const Color(0xFF4682B4),
+                                      width: 2,
+                                    ),
+                                    children: [
+                                      const TableRow(
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.all(10.0),
+                                            child: Text(
+                                              'PARAMETERS',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(10.0),
+                                            child: Text(
+                                              'VALUE',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      for (var data in resultArray)
+                                        TableRow(
+                                          children: [
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.all(10.0),
+                                              child: Text(data['key']!),
+                                            ),
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.all(10.0),
+                                              child: Text(data['value']!),
+                                            ),
+                                          ],
+                                        ),
                                     ],
-                                    rows: resultArray.map((data) {
-                                      return DataRow(cells: [
-                                        DataCell(Text(data['key']!)),
-                                        DataCell(Text(data['value']!)),
-                                      ]);
-                                    }).toList(),
                                   )
                                 : const Center(
                                     child: CupertinoActivityIndicator(),
@@ -545,7 +612,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                                 onPressed: () {
                                   PubMEssage("*GET1#");
                                 },
-                                child: const Text("GET").p12(),
+                                child: const Text("STATUS").p12(),
                               ),
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
@@ -598,36 +665,96 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildTextComposer() {
+    var textcolor = false;
     return AlertDialog(
-      title: const Text('Activate Device'),
+      title: const Text('Authentication'),
       content: TextField(
         controller: controller,
-        decoration:
-            const InputDecoration.collapsed(hintText: "Enter Activation Code"),
+        decoration: const InputDecoration.collapsed(
+          hintText: "Enter Your Activation Code",
+        ),
       ),
       actions: [
         TextButton(
-            onPressed: () {
+          onPressed: () {
+            if (controller.text.length <= 14) {
               setState(() {
-                ClientIDActivate(controller.text);
+                showerrorDialog = true;
+              });
+            } else {
+              savetopic();
+
+              setState(() {
+                Mtopic.changeTopic(controller.text);
+                topic = controller.text;
+                showActivateDialog = false;
                 conectingMqt();
               });
-            },
-            child: const Text('Activate'))
+            }
+          },
+          child: const Text('SUBMIT'),
+        ),
       ],
     );
-    // return Row(
-    //   children: [
-    //     Expanded(
-    //       child: TextField(
-    //         controller: controller,
-    //         decoration:
-    //             const InputDecoration.collapsed(hintText: "Ask AnyThing"),
-    //       ),
-    //     ),
-    //     IconButton(
-    //         onPressed: () => {conectingMqt()}, icon: const Icon(Icons.send))
-    //   ],
-    // ).px16();
+  }
+
+  Widget alertbox() {
+    return AlertDialog(
+      title: const Text('Invalid Digits '),
+      content: TextField(
+        controller: controller,
+        decoration: const InputDecoration.collapsed(
+          hintText: "Enter Activation Code",
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            setState(() {
+              PubMEssage(controller.text);
+              showCmd = false;
+            });
+          },
+          child: const Text('Ok'),
+        ),
+      ],
+    );
+  }
+
+  Widget customCmd() {
+    return AlertDialog(
+      title: const Text('Command'),
+      content: TextField(
+        controller: controller2,
+        decoration: const InputDecoration.collapsed(
+          hintText: "Enter Command",
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            setState(() {
+              showCmd = false;
+            });
+          },
+          child: const Text('Cancle'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (controller2.text.length <= 3) {
+              setState(() {
+                showCmd = false;
+              });
+            } else {
+              setState(() {
+                showCmd = false;
+                PubMEssage(controller2.text);
+              });
+            }
+          },
+          child: const Text('Send'),
+        ),
+      ],
+    );
   }
 }
