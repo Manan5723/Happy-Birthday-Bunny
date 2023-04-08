@@ -6,13 +6,13 @@ import 'main.dart';
 
 class Mqttcon {
   Future<void> bgmq(String topic) async {
-    Timer.periodic(Duration(seconds: 5), (timer) {
-      Connectivity().onConnectivityChanged.listen((event) {
-        if (event != ConnectivityResult.none) {
-          bgmq(topic);
-        }
-      });
-    });
+    // Timer.periodic(Duration(seconds: 5), (timer) {
+    //   Connectivity().onConnectivityChanged.listen((event) {
+    //     if (event != ConnectivityResult.none) {
+    //       bgmq(topic);
+    //     }
+    //   });
+    // });
 
     client.logging(on: true);
     client.setProtocolV311();
@@ -34,26 +34,32 @@ class Mqttcon {
     try {
       await client.connect();
     } on NoConnectionException catch (e) {
-      showNotification('Connection Error - $e');
+      // showNotification('Connection Error - $e');
       client.disconnect();
     } on SocketException catch (e) {
       // Raised by the socket layer
-      showNotification('Socket Exception - $e');
+      // showNotification('Socket Exception - $e');
       client.disconnect();
     }
 
     /// Check we are connected
     if (client.connectionStatus!.state == MqttConnectionState.connected) {
-      showNotification('Conected To Device $topic');
+      silentshowNotification('Conected To Device $topic');
     } else {
       /// Use status here rather than state if you also want the broker return code.
-      showNotification('Connection Failed... ${client.connectionStatus}');
+      //showNotification(
+      //  'Connection Failed kindly check your internet connection try to turn on and off the internet for reconnecting');
       client.disconnect();
       exit(-1);
     }
 
     client.onDisconnected = () async => {
-          showNotification('Disconnected from device'),
+          Connectivity().onConnectivityChanged.listen((event) {
+            if (event != ConnectivityResult.none) {
+              bgmq(topic);
+            }
+          }),
+          showNotification('Disconnected from device $topic'),
         };
 
     client.subscribe("${topic}P", MqttQos.atLeastOnce);

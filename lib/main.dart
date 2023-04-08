@@ -71,7 +71,7 @@ Future<void> initializeService() async {
     'MY FOREGROUND SERVICE', // title
     description:
         'This channel is used for important notifications.', // description
-    importance: Importance.high, // importance must be at low or higher level
+    importance: Importance.low, // importance must be at low or higher level
   );
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -92,7 +92,7 @@ Future<void> initializeService() async {
         notificationChannelId:
             notificationChannelId, // this must match with notification channel you created above.
         initialNotificationTitle: 'GSM M2M',
-        initialNotificationContent: 'Welcome',
+        initialNotificationContent: 'Welcome to ThingsWorld ',
         foregroundServiceNotificationId: notificationId),
     iosConfiguration: IosConfiguration(),
   );
@@ -123,11 +123,15 @@ Future<void> _bgmq() async {
   try {
     await client.connect();
   } on NoConnectionException catch (e) {
-    showNotification('Connection Error - $e');
+    showNotification(
+        'Connection Failed kindly check your internet connection try to turn on and off the internet for reconnecting');
+    // showNotification('Connection Error - $e');
     client.disconnect();
   } on SocketException catch (e) {
     // Raised by the socket layer
-    showNotification('Socket Exception - $e');
+    showNotification(
+        'Connection Failed kindly check your internet connection try to turn on and off the internet for reconnecting');
+    // showNotification('Socket Exception - $e');
     client.disconnect();
   }
 
@@ -136,7 +140,8 @@ Future<void> _bgmq() async {
     showNotification('Conected....');
   } else {
     /// Use status here rather than state if you also want the broker return code.
-    showNotification('Connection Failed... ${client.connectionStatus}');
+    showNotification(
+        'Connection Failed kindly check your internet connection try to turn on and off the internet for reconnecting');
     client.disconnect();
     exit(-1);
   }
@@ -149,7 +154,7 @@ Future<void> _bgmq() async {
             return;
           }
         }),
-        showNotification('Disconnected from device')
+        showNotification('Disconnected from device $topic')
       };
 
   client.subscribe(topic, MqttQos.atLeastOnce);
@@ -169,10 +174,29 @@ Future<void> showNotification(String message) async {
     const NotificationDetails(
       android: AndroidNotificationDetails(
         '0',
-        'MY FOREGROUND SERVICE',
+        'GSM Alerts',
         icon: 'ic_launcher',
         ongoing: false,
         priority: Priority.high,
+        styleInformation: BigTextStyleInformation(''),
+      ),
+    ),
+  );
+}
+
+Future<void> silentshowNotification(String message) async {
+  flutterLocalNotificationsPlugin.show(
+    1,
+    'Reconecting',
+    message,
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        '1',
+        'GSM Alerts',
+        icon: 'ic_launcher',
+        ongoing: false,
+        priority: Priority.low,
+        playSound: false,
         styleInformation: BigTextStyleInformation(''),
       ),
     ),
@@ -328,6 +352,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     client.connectionMessage = connMess;
     try {
       await client.connect();
+      silentshowNotification('Connected To Device $topic');
     } on NoConnectionException catch (e) {
       // Raised by the client when connection fails.
       print('EXAMPLE::client exception - $e');
@@ -350,12 +375,10 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     }
 
     client.onDisconnected = () => {
-          Timer.periodic(Duration(seconds: 5), (timer) {
-            Connectivity().onConnectivityChanged.listen((event) {
-              if (event != ConnectivityResult.none) {
-                conectingMqt();
-              }
-            });
+          Connectivity().onConnectivityChanged.listen((event) {
+            if (event != ConnectivityResult.none) {
+              conectingMqt();
+            }
           }),
           showNotification('Disconnected from device'),
         };
@@ -477,7 +500,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
               padding: EdgeInsets.only(top: 5),
               child: Text(
                 'GSM M2M v1.2',
-                style: TextStyle(color: Color(0xFF4682B4), fontSize: 16),
+                style: TextStyle(color: Color(0xFF4682B4), fontSize: 14),
               ),
             ),
           ],
@@ -606,13 +629,18 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                                 },
                                 child: const Text("OFF").p12(),
                               ),
+                            ],
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
                                     primary: Color(0xFF4682B4)),
                                 onPressed: () {
                                   PubMEssage("*GET1#");
                                 },
-                                child: const Text("STATUS").p12(),
+                                child: const Text("GET").p12(),
                               ),
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
@@ -701,18 +729,12 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   Widget alertbox() {
     return AlertDialog(
       title: const Text('Invalid Digits '),
-      content: TextField(
-        controller: controller,
-        decoration: const InputDecoration.collapsed(
-          hintText: "Enter Activation Code",
-        ),
-      ),
+      content: Text('Input Proper 15 Digits Activation Code'),
       actions: [
         TextButton(
           onPressed: () {
             setState(() {
-              PubMEssage(controller.text);
-              showCmd = false;
+              showerrorDialog = false;
             });
           },
           child: const Text('Ok'),

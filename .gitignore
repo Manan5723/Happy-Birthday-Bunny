@@ -42,3 +42,38 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+
+
+# Flutter/Dart specific files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+build/
+ios/Flutter
+web/assets/
+web/favicon.png
+web/icons/
+*.iml
+
+# Android specific files
+**/gradle-wrapper.jar
+**/gradlew
+**/local.properties
+**/.idea/
+**/.gradle/
+**/build/
+
+# iOS specific files
+**/Pods/
+**/*.xcworkspace/
+**/*.xcuserstate
+**/*.pbxproj
+**/GeneratedPluginRegistrant.*
+
+# Visual Studio Code specific files
+.vscode/
+*.code-workspace
+*.history
